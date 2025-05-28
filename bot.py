@@ -197,6 +197,40 @@ def build_modal_view(channel_id, selected_metric, state_values):
         "blocks": blocks,
     }
 
+def build_aggregate_blocks(noun: str, start: str, end: str, who: str, total) -> list:
+    """
+    Returns a Block Kit payload for an aggregate summary:
+      – Header with metric name
+      – Two-column section with period & subject
+      – Section with the total value
+    """
+    return [
+        # 1) Big bold title
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"{noun} Summary",
+                "emoji": True
+            }
+        },
+        # 2) Metadata in fields
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Period:*\n{start} → {end}"},
+                {"type": "mrkdwn", "text": f"*Subject:*\n{who}"}
+            ]
+        },
+        # 3) Headline number
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"*Total {noun}:* `{total}`"
+            }
+        }
+    ]
 
 def validate_dates(start, end):
     errs = {}
@@ -286,12 +320,12 @@ async def on_submit(ack, body, view, client):
                 filters=filters,
                 dataset_type="aggregate",
             )
-            print(df)
-            total = df.iloc[0:1]
+            total = df["CPU Hours: Total"].item()
             noun = metric.replace("_", " ").title()
             who = filt_v if filt_t in ("user", "group") else "All Users"
-            text = f"*Total {noun}* over {start}→{end} for {who}: *{total}*"
-            await client.chat_postMessage(channel=target, text=text)
+            #text = f"*Total {noun}* over {start}→{end} for {who}: *{total}*"
+            blocks = build_aggregate_blocks(noun, start, end, who, total)
+            await client.chat_postMessage(channel=target, blocks=blocks)
 
         else:
             df = dw.get_data(
