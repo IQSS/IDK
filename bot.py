@@ -12,9 +12,11 @@ import io
 import datetime
 import asyncio
 import logging
+from itertools import chain
 from dateutil.relativedelta import relativedelta
 
 from slack_bolt.app.async_app import AsyncApp
+from slack_bolt import Ack
 from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 
 from xdmod_data.warehouse import DataWarehouse
@@ -58,6 +60,8 @@ PLOT_COLORS = {
     "gpu_hours": "#0072CE",  # Harvard Blue
     "queue_wait": "#4B4B4B",  # Dark Gray
 }
+
+CACHE_TYPEAHEAD = {"USERS": list(), "PI": list()}
 
 SIX_MONTHS_AGO = (datetime.date.today() - relativedelta(months=6)).isoformat()
 XDMOD_URL = os.environ.get("XDMOD_URL", "https://xdmod.rc.fas.harvard.edu")
@@ -242,9 +246,7 @@ def build_aggregate_blocks(noun, start, end, who, total):
 
 
 def describe_graph(who, noun, start, end):
-    return (
-        f"This graph shows {who} {noun.lower()} between {start} and {end}."
-    )
+    return f"This graph shows {who} {noun.lower()} between {start} and {end}."
 
 
 def validate_dates(start, end):
@@ -266,6 +268,33 @@ app = AsyncApp(
     signing_secret=os.environ["SLACK_SIGNING_SECRET"],
 )
 
+async def make_suggest_options(cache_key, body):
+    q = body.get("value", "")
+    matches = [c for c in CACHE_TYPEAHEAD[cache_key] if q.lower() in c.lower()][:10]
+    options = [
+        {"text": {"type": "plain_text", "text": m}, "value": m}
+        for m in matches
+    ]
+
+    if q:
+        options.append({
+            "text": {"type": "plain_text", "text": f"Use “{q}”"},
+            "value": q
+        })
+
+    return options
+
+@app.options("filter_value_users")
+async def suggest_filter_values_user(ack: Ack, body, logger):
+    # what the user has typed so far:
+    options = await make_suggest_options("USERS", body)
+    ack(options=options)
+
+@app.options("filter_value_pi")
+async def suggest_filter_values_pi(ack: Ack, body, logger):
+    # what the user has typed so far:
+    options = await make_suggest_options("PI", body)
+    ack(options=options)
 
 @app.command("/metrics")
 async def cmd_metrics(ack, body, client):
@@ -357,10 +386,12 @@ async def on_submit(ack, body, view, client):
             x = df.index
             # Scale to 1
             if df.empty:
-                blocks = build_aggregate_blocks(noun, start, end, who, "No data returned from query.")
+                blocks = build_aggregate_blocks(
+                    noun, start, end, who, "No data returned from query."
+                )
                 return await client.chat_postMessage(channel=target, blocks=blocks)
-            
-            y = df.iloc[:, 0] / 1 
+
+            y = df.iloc[:, 0] / 1
 
             fig, ax = plt.subplots(figsize=(12, 6), dpi=100)
             ax.plot(x, y, color=PLOT_COLORS[metric], linewidth=2)
@@ -389,8 +420,42 @@ async def on_submit(ack, body, view, client):
             buf.close()
 
 
+async def update_typeahead_cache():
+    while True:
+        logger.debug(
+            f"count(CACHE_TYPEAHEAD[USERS])={len(CACHE_TYPEAHEAD['USERS'])}\t"
+            f"count(CACHE_TYPEAHEAD[PI])={len(CACHE_TYPEAHEAD['PI'])}"
+        )
+
+        with DataWarehouse(XDMOD_URL) as dw:
+            args = {
+                "duration": "7 day",
+                "realm": "Jobs",
+                "metric": "job_count",
+                "dataset_type": "aggregate",
+            }
+            u0 = dw.get_data(**args, dimension="User")
+            u1 = sorted(u0.index.unique().tolist())
+            g0 = dw.get_data(**args, dimension="PI")
+            g1 = sorted(g0.index.unique().tolist())
+
+            CACHE_TYPEAHEAD["USERS"] = list(
+                dict.fromkeys(chain(CACHE_TYPEAHEAD["USERS"], u1))
+            )
+            CACHE_TYPEAHEAD["PI"] = list(dict.fromkeys(chain(CACHE_TYPEAHEAD["PI"], g1)))
+
+        logger.debug(
+            f"count(CACHE_TYPEAHEAD[USERS])={len(CACHE_TYPEAHEAD['USERS'])}\t"
+            f"count(CACHE_TYPEAHEAD[PI])={len(CACHE_TYPEAHEAD['PI'])}"
+        )
+
+        await asyncio.sleep(100)
+
+
 async def main():
     handler = AsyncSocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
+    asyncio.create_task(update_typeahead_cache())
+
     await handler.start_async()
 
 
