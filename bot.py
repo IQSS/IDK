@@ -180,10 +180,12 @@ def build_modal_view(channel_id, selected_metric, state_values):
         if prev_filter in ("user", "group"):
             label_txt = "FASRC Username" if prev_filter == "user" else "FASRC Group"
             placeholder = "e.g. jdoe" if prev_filter == "user" else "e.g. analytics"
-            init_val = sv("filter_value_block", "filter_value")
+            init_val = sv("filter_value_block", "filter_value") 
+            action_id = "filter_value_user" if prev_filter == "user" else "filter_value_pi"
             elem = {
-                "type": "plain_text_input",
-                "action_id": "filter_value",
+                "type": "external_select",
+                "action_id": action_id,
+                "min_query_length": 0,
                 "placeholder": {"type": "plain_text", "text": placeholder},
             }
             if init_val:
@@ -284,17 +286,17 @@ async def make_suggest_options(cache_key, body):
 
     return options
 
-@app.options("filter_value_users")
-async def suggest_filter_values_user(ack: Ack, body, logger):
+@app.options("filter_value_user")
+async def suggest_filter_values_user(ack, body, logger):
     # what the user has typed so far:
     options = await make_suggest_options("USERS", body)
-    ack(options=options)
+    await ack(options=options)
 
 @app.options("filter_value_pi")
-async def suggest_filter_values_pi(ack: Ack, body, logger):
+async def suggest_filter_values_pi(ack, body, logger):
     # what the user has typed so far:
     options = await make_suggest_options("PI", body)
-    ack(options=options)
+    await ack(options=options)
 
 @app.command("/metrics")
 async def cmd_metrics(ack, body, client):
