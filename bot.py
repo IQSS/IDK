@@ -20,42 +20,43 @@ from slack_bolt.adapter.socket_mode.async_handler import AsyncSocketModeHandler
 from xdmod_data.warehouse import DataWarehouse
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 # ───────────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Map our internal metric keys → XDMoD metric names
 METRICS = {
-    "cpu_hours":  "CPU Hours: Total",
-    "gpu_hours":  "GPU Hours: Total",
-    "queue_wait": "Queue wait-time",
+    "cpu_hours": "CPU Hours: Total",
+    "gpu_hours": "GPU Hours: Total",
+    "queue_wait": "Wait Hours: Total",
 }
 METRIC_OPTIONS = [
-    {"text": {"type": "plain_text", "text": "CPU hours"},       "value": "cpu_hours"},
-    {"text": {"type": "plain_text", "text": "GPU hours"},       "value": "gpu_hours"},
-    {"text": {"type": "plain_text", "text": "Queue wait-time"},"value": "queue_wait"},
+    {"text": {"type": "plain_text", "text": "CPU hours"}, "value": "cpu_hours"},
+    {"text": {"type": "plain_text", "text": "GPU hours"}, "value": "gpu_hours"},
+    {"text": {"type": "plain_text", "text": "Queue wait-time"}, "value": "queue_wait"},
 ]
 
 FORMATS = [
-    {"text": {"type": "plain_text", "text": "Aggregate"},  "value": "aggregate"},
+    {"text": {"type": "plain_text", "text": "Aggregate"}, "value": "aggregate"},
     {"text": {"type": "plain_text", "text": "Timeseries"}, "value": "timeseries"},
 ]
 
 FILTER_TYPES = [
-    {"text": {"type": "plain_text", "text": "N/A"},   "value": "na"},
-    {"text": {"type": "plain_text", "text": "User"},  "value": "user"},
+    {"text": {"type": "plain_text", "text": "N/A"}, "value": "na"},
+    {"text": {"type": "plain_text", "text": "User"}, "value": "user"},
     {"text": {"type": "plain_text", "text": "Group"}, "value": "group"},
 ]
 
 # Harvard/IQSS color palette (approximate)
 PLOT_COLORS = {
-    "cpu_hours":  "#A51C30",   # Crimson
-    "gpu_hours":  "#0072CE",   # Harvard Blue
-    "queue_wait": "#4B4B4B",   # Dark Gray
+    "cpu_hours": "#A51C30",  # Crimson
+    "gpu_hours": "#0072CE",  # Harvard Blue
+    "queue_wait": "#4B4B4B",  # Dark Gray
 }
 
 SIX_MONTHS_AGO = (datetime.date.today() - relativedelta(months=6)).isoformat()
@@ -71,112 +72,179 @@ def build_modal_view(channel_id, selected_metric, state_values):
 
     prev_filter = (
         state_values.get("filter_block", {})
-                    .get("filter_type", {})
-                    .get("selected_option", {})
-                    .get("value", "na")
-        if state_values else "na"
+        .get("filter_type", {})
+        .get("selected_option", {})
+        .get("value", "na")
+        if state_values
+        else "na"
     )
     prev_format = (
         state_values.get("format_block", {})
-                    .get("format_select", {})
-                    .get("selected_option", {})
-                    .get("value", "aggregate")
-        if state_values else "aggregate"
+        .get("format_select", {})
+        .get("selected_option", {})
+        .get("value", "aggregate")
+        if state_values
+        else "aggregate"
     )
 
     blocks = [
         # Dates
-        {"type":"input","block_id":"start_date_block",
-         "label":{"type":"plain_text","text":"Start date"},
-         "element":{
-             "type":"datepicker","action_id":"start_date",
-             "initial_date":sv("start_date_block","start_date") or datetime.date.today().isoformat(),
-             "placeholder":{"type":"plain_text","text":f"≥ {SIX_MONTHS_AGO}"}}},
-        {"type":"input","block_id":"end_date_block",
-         "label":{"type":"plain_text","text":"End date"},
-         "element":{
-             "type":"datepicker","action_id":"end_date",
-             "initial_date":sv("end_date_block","end_date") or datetime.date.today().isoformat(),
-             "placeholder":{"type":"plain_text","text":"≤ today"}}},
-
+        {
+            "type": "input",
+            "block_id": "start_date_block",
+            "label": {"type": "plain_text", "text": "Start date"},
+            "element": {
+                "type": "datepicker",
+                "action_id": "start_date",
+                "initial_date": sv("start_date_block", "start_date")
+                or datetime.date.today().isoformat(),
+                "placeholder": {"type": "plain_text", "text": f"≥ {SIX_MONTHS_AGO}"},
+            },
+        },
+        {
+            "type": "input",
+            "block_id": "end_date_block",
+            "label": {"type": "plain_text", "text": "End date"},
+            "element": {
+                "type": "datepicker",
+                "action_id": "end_date",
+                "initial_date": sv("end_date_block", "end_date")
+                or datetime.date.today().isoformat(),
+                "placeholder": {"type": "plain_text", "text": "≤ today"},
+            },
+        },
         # Metric selector
-        {"type":"input","block_id":"metric_block","dispatch_action":True,
-         "label":{"type":"plain_text","text":"Metric"},
-         "element":(lambda: {
-             **{"type":"static_select","action_id":"metric_select","options":METRIC_OPTIONS},
-             **({"initial_option":next(o for o in METRIC_OPTIONS if o["value"]==selected_metric)}
-                if selected_metric else {})
-         })()},
-
+        {
+            "type": "input",
+            "block_id": "metric_block",
+            "dispatch_action": True,
+            "label": {"type": "plain_text", "text": "Metric"},
+            "element": (
+                lambda: {
+                    **{
+                        "type": "static_select",
+                        "action_id": "metric_select",
+                        "options": METRIC_OPTIONS,
+                    },
+                    **(
+                        {
+                            "initial_option": next(
+                                o
+                                for o in METRIC_OPTIONS
+                                if o["value"] == selected_metric
+                            )
+                        }
+                        if selected_metric
+                        else {}
+                    ),
+                }
+            )(),
+        },
         # Format selector (always visible)
-        {"type":"input","block_id":"format_block",
-         "label":{"type":"plain_text","text":"Format"},
-         "element":{
-             "type":"static_select","action_id":"format_select",
-             "options":FORMATS,
-             "initial_option":next(f for f in FORMATS if f["value"]==prev_format)
-         }},
-
-        {"type":"divider"},
+        {
+            "type": "input",
+            "block_id": "format_block",
+            "label": {"type": "plain_text", "text": "Format"},
+            "element": {
+                "type": "static_select",
+                "action_id": "format_select",
+                "options": FORMATS,
+                "initial_option": next(f for f in FORMATS if f["value"] == prev_format),
+            },
+        },
+        {"type": "divider"},
     ]
 
     # Filters only for CPU/GPU
-    if selected_metric in ("cpu_hours","gpu_hours"):
-        blocks.append({
-            "type":"input","block_id":"filter_block","dispatch_action":True,
-            "label":{"type":"plain_text","text":"Filter Type"},
-            "element":{
-                "type":"static_select","action_id":"filter_type",
-                "options":FILTER_TYPES,
-                "initial_option":next(ft for ft in FILTER_TYPES if ft["value"]==prev_filter)
+    if selected_metric in ("cpu_hours", "gpu_hours"):
+        blocks.append(
+            {
+                "type": "input",
+                "block_id": "filter_block",
+                "dispatch_action": True,
+                "label": {"type": "plain_text", "text": "Filter Type"},
+                "element": {
+                    "type": "static_select",
+                    "action_id": "filter_type",
+                    "options": FILTER_TYPES,
+                    "initial_option": next(
+                        ft for ft in FILTER_TYPES if ft["value"] == prev_filter
+                    ),
+                },
             }
-        })
-        if prev_filter in ("user","group"):
-            label_txt = "FASRC Username" if prev_filter=="user" else "FASRC Group"
-            placeholder = "e.g. jdoe" if prev_filter=="user" else "e.g. analytics"
-            init_val = sv("filter_value_block","filter_value")
-            elem = {"type":"plain_text_input","action_id":"filter_value",
-                    "placeholder":{"type":"plain_text","text":placeholder}}
+        )
+        if prev_filter in ("user", "group"):
+            label_txt = "FASRC Username" if prev_filter == "user" else "FASRC Group"
+            placeholder = "e.g. jdoe" if prev_filter == "user" else "e.g. analytics"
+            init_val = sv("filter_value_block", "filter_value")
+            elem = {
+                "type": "plain_text_input",
+                "action_id": "filter_value",
+                "placeholder": {"type": "plain_text", "text": placeholder},
+            }
             if init_val:
                 elem["initial_value"] = init_val
-            blocks.append({
-                "type":"input","block_id":"filter_value_block",
-                "label":{"type":"plain_text","text":label_txt},
-                "element":elem
-            })
+            blocks.append(
+                {
+                    "type": "input",
+                    "block_id": "filter_value_block",
+                    "label": {"type": "plain_text", "text": label_txt},
+                    "element": elem,
+                }
+            )
     else:
-        blocks.append({
-            "type":"section","block_id":"no_filter_block",
-            "text":{"type":"mrkdwn","text":"_Filtering not available for Queue wait-time_"}
-        })
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "no_filter_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "_Filtering not available for Queue wait-time_",
+                },
+            }
+        )
 
     return {
-        "type":"modal","callback_id":"metrics_modal",
-        "private_metadata":channel_id,
-        "title":{"type":"plain_text","text":"Metrics"},
-        "submit":{"type":"plain_text","text":"Generate"},
-        "close":{"type":"plain_text","text":"Cancel"},
-        "blocks":blocks
+        "type": "modal",
+        "callback_id": "metrics_modal",
+        "private_metadata": channel_id,
+        "title": {"type": "plain_text", "text": "Metrics"},
+        "submit": {"type": "plain_text", "text": "Generate"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "blocks": blocks,
     }
 
 
 def build_aggregate_blocks(noun, start, end, who, total):
     return [
-        {"type":"header","text":{"type":"plain_text","text":f"{noun} Summary","emoji":True}},
-        {"type":"section","fields":[
-            {"type":"mrkdwn","text":f"*Period:*\n{start} → {end}"},
-            {"type":"mrkdwn","text":f"*Subject:*\n{who}"}
-        ]},
-        {"type":"section","text":{"type":"mrkdwn","text":f"*Total {noun}:* `{total}`"}},
-        {"type":"context","elements":[
-            {"type":"mrkdwn","text":f"Data extracted from XDMoD {XDMOD_URL}"}
-        ]}
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"{noun} Summary", "emoji": True},
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Period:*\n{start} → {end}"},
+                {"type": "mrkdwn", "text": f"*Subject:*\n{who}"},
+            ],
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Total {noun}:* `{total}`"},
+        },
+        {
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": f"Data extracted from XDMoD {XDMOD_URL}"}
+            ],
+        },
     ]
 
 
-def describe_graph(who, noun, unit, start, end):
-    return (f"This graph shows {who} {noun.lower()} in {unit} "
-            f"between {start} and {end}.")
+def describe_graph(who, noun, start, end):
+    return (
+        f"This graph shows {who} {noun.lower()} between {start} and {end}."
+    )
 
 
 def validate_dates(start, end):
@@ -230,18 +298,18 @@ async def on_filter_type_change(ack, body, client):
 
 @app.view("metrics_modal")
 async def on_submit(ack, body, view, client):
-    vals   = view["state"]["values"]
-    start  = vals["start_date_block"]["start_date"]["selected_date"]
-    end    = vals["end_date_block"]["end_date"]["selected_date"]
+    vals = view["state"]["values"]
+    start = vals["start_date_block"]["start_date"]["selected_date"]
+    end = vals["end_date_block"]["end_date"]["selected_date"]
     metric = vals["metric_block"]["metric_select"]["selected_option"]["value"]
-    fmt    = vals["format_block"]["format_select"]["selected_option"]["value"]
-    filt_t = (vals.get("filter_block", {})
-                  .get("filter_type", {})
-                  .get("selected_option", {})
-                  .get("value", "na"))
-    filt_v = (vals.get("filter_value_block", {})
-                  .get("filter_value", {})
-                  .get("value", ""))
+    fmt = vals["format_block"]["format_select"]["selected_option"]["value"]
+    filt_t = (
+        vals.get("filter_block", {})
+        .get("filter_type", {})
+        .get("selected_option", {})
+        .get("value", "na")
+    )
+    filt_v = vals.get("filter_value_block", {}).get("filter_value", {}).get("value", "")
 
     errs = validate_dates(start, end)
     if errs:
@@ -250,15 +318,15 @@ async def on_submit(ack, body, view, client):
     await ack()
 
     origin = view["private_metadata"]
-    is_dm   = origin.startswith("D")
-    target  = origin
+    is_dm = origin.startswith("D")
+    target = origin
 
     dw_metric = METRICS[metric]
-    noun      = metric.replace("_"," ").title()
-    dimension = None if filt_t=="na" else ("User" if filt_t=="user" else "PI")
-    filters   = {} if filt_t=="na" else {dimension: filt_v}
-    who       = filt_v if filt_t in ("user","group") else "All Users"
-    who       = "PI" if who == "group" else who
+    noun = metric.replace("_", " ").title()
+    dimension = None if filt_t == "na" else ("User" if filt_t == "user" else "PI")
+    filters = {} if filt_t == "na" else {dimension: filt_v}
+    who = filt_v if filt_t in ("user", "group") else "All Users"
+    who = "PI" if who == "group" else who
 
     with DataWarehouse(XDMOD_URL) as dw:
         if fmt == "aggregate":
@@ -270,8 +338,7 @@ async def on_submit(ack, body, view, client):
                 filters=filters,
                 dataset_type="aggregate",
             )
-            print(dw_metric,dimension,filters,df)
-            total = df[dw_metric].item()
+            total = df[dw_metric].item() if dimension == "None" else df.squeeze()
             blocks = build_aggregate_blocks(noun, start, end, who, total)
             await client.chat_postMessage(channel=target, blocks=blocks)
         else:
@@ -285,18 +352,21 @@ async def on_submit(ack, body, view, client):
                 aggregation_unit="Auto",
             )
 
-
             logger.debug(df)
 
-            # scale to millions
             x = df.index
-            y = df.iloc[:, 0] / 1e6
+            # Scale to 1
+            if df.empty:
+                blocks = build_aggregate_blocks(noun, start, end, who, "No data returned from query.")
+                return await client.chat_postMessage(channel=target, blocks=blocks)
+            
+            y = df.iloc[:, 0] / 1 
 
             fig, ax = plt.subplots(figsize=(12, 6), dpi=100)
             ax.plot(x, y, color=PLOT_COLORS[metric], linewidth=2)
             ax.set_title(f"{noun} ({start} → {end})", pad=16)
             ax.set_xlabel("Date")
-            ax.set_ylabel(f"{noun} (Millions)")
+            ax.set_ylabel(f"{noun}")
             # our FuncFormatter already ensures plain numbers:
             ax.yaxis.set_major_formatter(FuncFormatter(lambda v, p: f"{v:.1f}"))
 
@@ -306,7 +376,7 @@ async def on_submit(ack, body, view, client):
             plt.close(fig)
 
             # human-friendly description
-            desc = describe_graph(who, noun, "millions", start, end)
+            desc = describe_graph(who, noun, start, end)
             comment = f"{desc}\n_Data extracted from XDMoD {XDMOD_URL}_"
 
             await client.chat_postMessage(channel=target, text=comment)
@@ -314,7 +384,7 @@ async def on_submit(ack, body, view, client):
                 file=buf,
                 channels=[target],
                 filename=f"{metric}_{start}_{end}.png",
-                title=f"{noun} {start}→{end}"
+                title=f"{noun} {start}→{end}",
             )
             buf.close()
 
