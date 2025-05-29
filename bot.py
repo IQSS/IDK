@@ -340,7 +340,12 @@ async def on_submit(ack, body, view, client):
         .get("selected_option", {})
         .get("value", "na")
     )
-    filt_v = vals.get("filter_value_block", {}).get("filter_value", {}).get("value", "")
+    filt_v = ""
+    fv_block = vals.get("filter_value_block", {})
+    if fv_block:
+        act_id, state = next(iter(fv_block.items()))          # "filter_value_user" | "filter_value_pi"
+        filt_v = state.get("selected_option", {}).get("value", "")
+    # filt_v = vals.get("filter_value_block", {}).get("filter_value", {}).get("value", "")
 
     errs = validate_dates(start, end)
     if errs:
