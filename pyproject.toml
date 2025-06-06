@@ -1,12 +1,21 @@
 [project]
 name = "idk"
 version = "0.1.0"
-description = "Add your description here"
+description = """
+This Slack bot lets users quickly generate resource usage reports—CPU hours, GPU hours, 
+or queue wait‐time—directly in their workspace.  By invoking /metrics, you’ll be 
+prompted to select a date range, choose a metric, and specify whether you want an 
+aggregate total or a timeseries chart.  If desired, filters by username or group can be 
+applied to narrow down results to specific users or teams.  Under the hood, the bot 
+retrieves data from XDMoD, produces a Harvard‐branded graph or summary, 
+and posts it back in the channel or via DM.  
+"""
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.11.18",
     "matplotlib>=3.10.3",
+    "prometheus-client>=0.22.1",
     "slack-bolt>=1.23.0",
     "xdmod-data>=1.0.3",
 ]
