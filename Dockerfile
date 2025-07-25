@@ -6,7 +6,9 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
       build-essential libffi-dev libssl-dev libpng-dev libcairo2-dev pkg-config \
       && rm -rf /var/lib/apt/lists/* \
       && addgroup app \
-      && adduser app --ingroup app
+      && adduser app --ingroup app \
+      && mkdir /app \
+      && chown app:app /app
 USER app
 WORKDIR /app
 ENV HOME="/app"
