@@ -15,7 +15,7 @@ ENV HOME="/app"
 ENV PATH="/app/.local/bin:${PATH}"
 COPY --chown=app:app pyproject.toml uv.lock* ./
 RUN pip install --no-cache-dir uv \
-      && uv sync
+      && uv sync --frozen --no-cache
 
 COPY --chown=app:app . .
 EXPOSE 8000
