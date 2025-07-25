@@ -5,9 +5,9 @@ FROM python:3.13.3-slim
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
       build-essential libffi-dev libssl-dev libpng-dev libcairo2-dev pkg-config \
       && rm -rf /var/lib/apt/lists/* \
-      && addgroup app \
-      && adduser app --ingroup app \
       && mkdir /app \
+      && addgroup app \
+      && adduser app --ingroup app --disabled-password --gecos "" --home "/app" --no-create-home --shell "/sbin/nologin" \
       && chown app:app /app
 USER app
 WORKDIR /app
