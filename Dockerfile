@@ -1,18 +1,20 @@
 # syntax=docker/dockerfile:1
 
-ARG PYTHON_VERSION
 FROM python:3.13.3-slim
 
-# rest of your Dockerfile…
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
       build-essential libffi-dev libssl-dev libpng-dev libcairo2-dev pkg-config \
- && rm -rf /var/lib/apt/lists/*
-
+      && rm -rf /var/lib/apt/lists/* \
+      && addgroup app \
+      && adduser app --ingroup app
+USER app
 WORKDIR /app
-COPY pyproject.toml uv.lock* ./
+ENV HOME="/app"
+ENV PATH="/app/.local/bin:${PATH}"
+COPY --chown=app:app pyproject.toml uv.lock* ./
 RUN pip install --no-cache-dir uv \
- && uv sync
+      && uv sync
 
-COPY . .
+COPY --chown=app:app . .
 EXPOSE 8000
 CMD ["uv", "run", "python", "bot.py"]
